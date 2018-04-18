@@ -264,7 +264,12 @@ func (a *AuthCommand) RotateCertAuthority(client auth.ClientI) error {
 	if err := client.RotateCertAuthority(req); err != nil {
 		return err
 	}
-	fmt.Printf("Initiated certificate authority rotation. To check status use 'tctl status'\n")
+	if a.rotateTargetPhase != "" {
+		fmt.Printf("Updated rotation phase to %q. To check status use 'tctl status'\n", a.rotateTargetPhase)
+	} else {
+		fmt.Printf("Initiated certificate authority rotation. To check status use 'tctl status'\n")
+	}
+
 	return nil
 }
 

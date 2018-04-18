@@ -309,39 +309,50 @@ func (s *remoteSite) periodicSendDiscoveryRequests() {
 
 // updateCertAuthorities updates local and remote cert authorities
 func (s *remoteSite) updateCertAuthorities() error {
-	/*
-				// this logic is explicitly using the local non cached
-				// client as it has to have write access to the auth server
-				localCA, err := s.localClient.GetCertAuthority(services.CertAuthID{
-					Type:       services.HostCA,
-					DomainName: s.srv.ClusterName,
-				}, false)
-				if err != nil {
-					return trace.Wrap(err)
-				}
-				re, err := s.remoteClient.ExchangeCerts(auth.ExchangeCertsRequest{
-					PublicKey: localCA.GetCheckingKeys()[0],
-					TLSCert:   localCA.GetTLSKeyPairs()[0].Cert,
-				})
-				if err != nil {
-					return trace.Wrap(err)
-				}
-
-				remoteCA, err := s.localClient.GetCertAuthority(services.CertAuthID{
-					Type:       services.HostCA,
-					DomainName: s.domainName,
-				}, false)
-				if err != nil {
-					return trace.Wrap(err)
-				}
-			_, err = s.localClient.ExchangeCerts(auth.ExchangeCertsRequest{
-				PublicKey: remoteCA.GetCheckingKeys()[0],
-				TLSCert:   re.TLSCert,
-			})
-
+	// update main cluster cert authorities on the remote side
+	localCA, err := s.localClient.GetCertAuthority(services.CertAuthID{
+		Type:       services.HostCA,
+		DomainName: s.srv.ClusterName,
+	}, false)
+	if err != nil {
 		return trace.Wrap(err)
-	*/
-	return nil
+	}
+	err = s.remoteClient.UpsertCertAuthority(localCA)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	localCA, err = s.localClient.GetCertAuthority(services.CertAuthID{
+		Type:       services.UserCA,
+		DomainName: s.srv.ClusterName,
+	}, false)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	err = s.remoteClient.UpsertCertAuthority(localCA)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	// update remote cluster cert authorities on a local cluster
+	remoteCA, err := s.remoteClient.GetCertAuthority(services.CertAuthID{
+		Type:       services.HostCA,
+		DomainName: s.domainName,
+	}, false)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	if remoteCA.GetClusterName() != s.domainName {
+		return trace.BadParameter(
+			"remote cluster sent different cluster name %v instead of expected one %v",
+			remoteCA.GetClusterName(), s.domainName)
+	}
+	err = s.localClient.UpsertCertAuthority(remoteCA)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	return trace.Wrap(err)
 }
 
 func (s *remoteSite) periodicUpdateCertAuthorities() {

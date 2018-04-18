@@ -167,23 +167,36 @@ func processRotationRequest(req RotateRequest) (services.CertAuthority, error) {
 
 	switch req.TargetPhase {
 	// this is the first stage of the rotation - new certificate authorities
-	// are being generated and
+	// are being generated, clients will start using new credentials
+	// and servers will use existing credentials, but will trust clients
+	// using new credentials
 	case services.RotationPhaseUpdateClients:
 		switch rotation.State {
 		case services.RotationStateStandby, "":
 		default:
-			return nil, trace.BadParameter("can not create new rotation phase")
+			return nil, trace.BadParameter("can not initate rotation while another is in progress")
 		}
 		if err := startNewRotation(req.clock, ca, *req.GracePeriod); err != nil {
 			return nil, trace.Wrap(err)
 		}
 		return ca, nil
+		// update server phase trusts uses the new credentials both for servers
+		// and clients, but still trusts clients with old credentials
 	case services.RotationPhaseUpdateServers:
+		if rotation.Phase != services.RotationPhaseUpdateClients {
+			return nil, trace.BadParameter(
+				"can only switch to phase %v from %v, current phase is %v",
+				services.RotationPhaseUpdateServers,
+				services.RotationPhaseUpdateClients,
+				rotation.Phase)
+		}
 		// this is simply update of the phase to signal nodes to restart
 		// and start serving new signatures
 		rotation.Phase = req.TargetPhase
 		ca.SetRotation(rotation)
 		return ca, nil
+		// rollback moves back both clients and servers to use old credentials
+		// but will trust new credentials
 	case services.RotationPhaseRollback:
 		switch rotation.Phase {
 		case services.RotationPhaseUpdateClients, services.RotationPhaseUpdateServers:
@@ -193,14 +206,20 @@ func processRotationRequest(req RotateRequest) (services.CertAuthority, error) {
 			return ca, nil
 		}
 		// this is to complete rotation, moves overall rotation
-		// to standby
+		// to standby, servers will only trust one CA
 	case services.RotationPhaseStandby:
 		switch rotation.Phase {
-		case services.RotationPhaseUpdateServers:
+		case services.RotationPhaseUpdateServers, services.RotationPhaseRollback:
 			if err := completeRotation(req.clock, ca); err != nil {
 				return nil, trace.Wrap(err)
 			}
 			return ca, nil
+		default:
+			return nil, trace.BadParameter(
+				"can only switch to phase %v from %v, current phase is %v",
+				services.RotationPhaseUpdateServers,
+				services.RotationPhaseUpdateClients,
+				rotation.Phase)
 		}
 	default:
 		return nil, trace.BadParameter("unsupported phase: %q", req.TargetPhase)

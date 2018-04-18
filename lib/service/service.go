@@ -117,6 +117,10 @@ const (
 	// TeleportReloadEvent is generated when the Teleport process needs
 	// to reload its configuration
 	TeleportReloadEvent = "TeleportReload"
+
+	// TeleportStartEvent is generated when the Teleport process starts
+	// successfully
+	TeleportStartEvent = "TeleportStart"
 )
 
 // RoleConfig is a configuration for a server role (either proxy or node)
@@ -147,14 +151,14 @@ type Connector struct {
 // in case of auth server the role is 'TeleportAdmin' and instead of using
 // client it uses the local auth server
 func (c *Connector) ReRegister(additionalPrincipals []string) (*auth.Identity, error) {
-	if c.ClientIdentity.ID.Role == teleport.RoleAdmin {
+	if c.ClientIdentity.ID.Role == teleport.RoleAdmin || c.ClientIdentity.ID.Role == teleport.RoleAuth {
 		return auth.GenerateIdentity(c.AuthServer, c.ClientIdentity.ID, additionalPrincipals)
 	}
 	return auth.ReRegister(c.Client, c.ClientIdentity.ID, additionalPrincipals)
 }
 
 func (c *Connector) GetCertAuthority(id services.CertAuthID, loadPrivateKeys bool) (services.CertAuthority, error) {
-	if c.ClientIdentity.ID.Role == teleport.RoleAdmin {
+	if c.ClientIdentity.ID.Role == teleport.RoleAdmin || c.ClientIdentity.ID.Role == teleport.RoleAuth {
 		return c.AuthServer.GetCertAuthority(id, loadPrivateKeys)
 	} else {
 		return c.Client.GetCertAuthority(id, loadPrivateKeys)
@@ -339,6 +343,8 @@ wait:
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, defaults.DefaultIdleConnectionDuration*2)
 	defer cancel()
+	// wait until services are declared as started, before shutting down
+	// this one?
 	srv.Shutdown(timeoutCtx)
 	if timeoutCtx.Err() == context.DeadlineExceeded {
 		warnOnErr(srv.Close())
@@ -367,7 +373,7 @@ func NewTeleport(cfg *Config) (*TeleportProcess, error) {
 		}
 	}
 
-	if len(cfg.FileDescriptors) != 0 {
+	if len(cfg.FileDescriptors) == 0 {
 		cfg.FileDescriptors, err = importFileDescriptors()
 		if err != nil {
 			return nil, trace.Wrap(err)
@@ -677,12 +683,10 @@ func (process *TeleportProcess) initAuthService() error {
 
 	process.setLocalAuth(authServer)
 
-	log.Infof("SASHA: connecto to auth service")
 	connector, err := process.connectToAuthService(teleport.RoleAdmin)
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	log.Infof("SASHA: connecto to auth service 2")
 
 	// second, create the API Server: it's actually a collection of API servers,
 	// each serving requests for a "role" which is assigned to every connected
@@ -822,8 +826,16 @@ func (process *TeleportProcess) initAuthService() error {
 		defer ticker.Stop()
 	announce:
 		for {
+			state, err := process.storage.GetState(teleport.RoleAdmin)
+			if err != nil {
+				if !trace.IsNotFound(err) {
+					log.Warningf("Failed to get rotation state: %v.", err)
+				}
+			} else {
+				srv.Spec.Rotation = state.Spec.Rotation
+			}
 			srv.SetTTL(process, defaults.ServerHeartbeatTTL)
-			err := authServer.UpsertAuthServer(&srv)
+			err = authServer.UpsertAuthServer(&srv)
 			if err != nil {
 				log.Warningf("Failed to announce presence: %v.", err)
 			}
@@ -907,6 +919,14 @@ func (process *TeleportProcess) newLocalCache(clt auth.ClientI, cacheName []stri
 	})
 }
 
+func (process *TeleportProcess) getRotation(role teleport.Role) (*services.Rotation, error) {
+	state, err := process.storage.GetState(role)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return &state.Spec.Rotation, nil
+}
+
 // initSSH initializes the "node" role, i.e. a simple SSH server connected to the auth server.
 func (process *TeleportProcess) initSSH() error {
 	process.registerWithAuthServer(teleport.RoleNode, SSHIdentityEvent)
@@ -975,6 +995,7 @@ func (process *TeleportProcess) initSSH() error {
 			regular.SetKEXAlgorithms(cfg.KEXAlgorithms),
 			regular.SetMACAlgorithms(cfg.MACAlgorithms),
 			regular.SetPAMConfig(cfg.SSH.PAM),
+			regular.SetRotationGetter(process.getRotation),
 		)
 		if err != nil {
 			return trace.Wrap(err)
@@ -1461,6 +1482,7 @@ func (process *TeleportProcess) initProxyEndpoint(conn *Connector) error {
 		regular.SetKEXAlgorithms(cfg.KEXAlgorithms),
 		regular.SetMACAlgorithms(cfg.MACAlgorithms),
 		regular.SetNamespace(defaults.Namespace),
+		regular.SetRotationGetter(process.getRotation),
 	)
 	if err != nil {
 		return trace.Wrap(err)

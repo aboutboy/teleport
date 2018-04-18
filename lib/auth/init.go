@@ -543,7 +543,7 @@ type IdentityID struct {
 func (id *IdentityID) HostID() (string, error) {
 	parts := strings.Split(id.HostUUID, ".")
 	if len(parts) < 2 {
-		return "", trace.BadParameter("expected 2 parts in %v", id.HostUUID)
+		return "", trace.BadParameter("expected 2 parts in %q", id.HostUUID)
 	}
 	return parts[0], nil
 }

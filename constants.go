@@ -236,13 +236,13 @@ const (
 	Syslog = "syslog"
 
 	// HumanDateFormat is a human readable date formatting
-	HumanDateFormat = "Mon Jan _2 15:04 UTC"
+	HumanDateFormat = "Jan _2 15:04 UTC"
 
-	// HumanDateFormat is a human readable date formatting with seconds
-	HumanDateFormatSeconds = "Mon Jan _2 15:04:05 UTC"
+	// HumanDateFormatSeconds is a human readable date formatting with seconds
+	HumanDateFormatSeconds = "Jan _2 15:04:05 UTC"
 
 	// HumanDateFormatMilli is a human readable date formatting with milliseconds
-	HumanDateFormatMilli = "Mon Jan _2 15:04:05.000 UTC"
+	HumanDateFormatMilli = "Jan _2 15:04:05.000 UTC"
 )
 
 // Component generates "component:subcomponent1:subcomponent2" strings used

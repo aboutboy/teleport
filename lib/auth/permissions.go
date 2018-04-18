@@ -166,8 +166,6 @@ func (a *authorizer) authorizeRemoteBuiltinRole(r RemoteBuiltinRole) (*AuthConte
 	if r.Role != teleport.RoleProxy {
 		return nil, trace.AccessDenied("access denied for remote %v connecting to cluster", r.Role)
 	}
-	// TODO(klizhentas): allow remote proxy to update the cluster's certificate authorities
-	// during certificates renewal
 	roles, err := services.FromSpec(
 		string(teleport.RoleRemoteProxy),
 		services.RoleSpecV3{
@@ -183,6 +181,18 @@ func (a *authorizer) authorizeRemoteBuiltinRole(r RemoteBuiltinRole) (*AuthConte
 					services.NewRule(services.KindReverseTunnel, services.RO()),
 					services.NewRule(services.KindTunnelConnection, services.RO()),
 					services.NewRule(services.KindClusterConfig, services.RO()),
+					// this rule allows remote proxy to update the cluster's certificate authorities
+					// during certificates renewal
+					{
+						Resources: []string{services.KindCertAuthority},
+						Verbs:     []string{services.VerbRead, services.VerbUpdate},
+						// allow administrative access to the certificate authority names
+						// matching the cluster name only
+						Where: services.EqualsExpr{
+							Left:  services.ResourceNameExpr,
+							Right: services.StringExpr(r.ClusterName),
+						}.String(),
+					},
 				},
 			},
 		})

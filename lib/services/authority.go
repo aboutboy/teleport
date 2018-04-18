@@ -639,13 +639,13 @@ func (r *Rotation) LastRotatedDescription() string {
 func (r *Rotation) PhaseDescription() string {
 	switch r.Phase {
 	case RotationPhaseStandby, "":
-		return "rotation is in standby mode, no action taken"
+		return "on standby"
 	case RotationPhaseUpdateClients:
-		return "clients are getting new certificates and reconnecting"
+		return "rotating clients"
 	case RotationPhaseUpdateServers:
-		return "servers are getting new certificates and reloading"
+		return "rotating servers"
 	case RotationPhaseRollback:
-		return "rotation is rolling back"
+		return "rolling back"
 	default:
 		return fmt.Sprintf("unknown phase: %q", r.Phase)
 	}
@@ -658,12 +658,13 @@ func (r *Rotation) String() string {
 		if r.LastRotated.IsZero() {
 			return "never updated"
 		}
-		return fmt.Sprintf("last rotated %v", r.LastRotated.Format(teleport.HumanDateFormatSeconds))
+		return fmt.Sprintf("rotated %v", r.LastRotated.Format(teleport.HumanDateFormatSeconds))
 	case RotationStateInProgress:
-		return fmt.Sprintf("graceful rotation started %v, going to complete %v, currently %v",
+		return fmt.Sprintf("%v (started: %v, ending: %v)",
+			r.PhaseDescription(),
 			r.Started.Format(teleport.HumanDateFormatSeconds),
 			r.Started.Add(r.GracePeriod.Duration).Format(teleport.HumanDateFormatSeconds),
-			r.PhaseDescription())
+		)
 	default:
 		return "unknown"
 	}

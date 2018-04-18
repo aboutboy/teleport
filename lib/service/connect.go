@@ -23,7 +23,7 @@ func (process *TeleportProcess) connectToAuthService(role teleport.Role) (*Conne
 }
 
 func (process *TeleportProcess) connect(role teleport.Role) (*Connector, error) {
-
+	// TODO (klizhentas) migrations should create state here
 	state, err := process.storage.GetState(role)
 	if err != nil {
 		if !trace.IsNotFound(err) {
@@ -219,7 +219,7 @@ func (process *TeleportProcess) periodicSyncRotationState() error {
 		case <-t.C:
 			needsReload, err := process.syncRotationState()
 			if err != nil {
-				log.Warningf("Failed to sync rotation state: %v", err)
+				log.Warningf("Failed to sync rotation state: %v", trace.DebugReport(err))
 			} else if needsReload {
 				// TODO: set context?
 				process.BroadcastEvent(Event{Name: TeleportReloadEvent})
@@ -283,8 +283,8 @@ func (process *TeleportProcess) rotate(conn *Connector, localState auth.StateV2,
 
 	const outOfSync = "%v and cluster rotation state (%v) is out of sync with local (%v). Clear local state and re-register this %v."
 
-	writeStateAndIdentity := func(identity *auth.Identity) error {
-		err = storage.WriteIdentity(auth.IdentityCurrent, *identity)
+	writeStateAndIdentity := func(name string, identity *auth.Identity) error {
+		err = storage.WriteIdentity(name, *identity)
 		if err != nil {
 			return trace.Wrap(err)
 		}
@@ -330,7 +330,7 @@ func (process *TeleportProcess) rotate(conn *Connector, localState auth.StateV2,
 			if err != nil {
 				return false, trace.Wrap(err)
 			}
-			err = writeStateAndIdentity(identity)
+			err = writeStateAndIdentity(auth.IdentityCurrent, identity)
 			if err != nil {
 				return false, trace.Wrap(err)
 			}
@@ -340,20 +340,20 @@ func (process *TeleportProcess) rotate(conn *Connector, localState auth.StateV2,
 		}
 	case services.RotationStateInProgress:
 		switch remote.Phase {
-		case services.RotationPhaseStandby:
+		case services.RotationPhaseStandby, "":
 			// nothing to do
 			return false, nil
 		case services.RotationPhaseUpdateClients:
 			// only allow transition in case if local rotation state is standby
 			// so this server is in the "clean" state
-			if local.State != services.RotationStateStandby {
+			if local.State != services.RotationStateStandby && local.State != "" {
 				return false, trace.CompareFailed(outOfSync, id.Role, remote, local, id.Role)
 			}
 			identity, err := conn.ReRegister(additionalPrincipals)
 			if err != nil {
 				return false, trace.Wrap(err)
 			}
-			err = writeStateAndIdentity(identity)
+			err = writeStateAndIdentity(auth.IdentityReplacement, identity)
 			if err != nil {
 				return false, trace.Wrap(err)
 			}
@@ -366,8 +366,12 @@ func (process *TeleportProcess) rotate(conn *Connector, localState auth.StateV2,
 			if local.Phase != services.RotationPhaseUpdateClients && local.CurrentID != remote.CurrentID {
 				return false, trace.CompareFailed(outOfSync, id.Role, remote, local, id.Role)
 			}
-			localState.Spec.Rotation = remote
-			err = storage.WriteState(id.Role, localState)
+			// write replacement identity as a current identity and reload the server
+			replacement, err := storage.ReadIdentity(auth.IdentityReplacement, id.Role)
+			if err != nil {
+				return false, trace.Wrap(err)
+			}
+			err = writeStateAndIdentity(auth.IdentityCurrent, replacement)
 			if err != nil {
 				return false, trace.Wrap(err)
 			}
@@ -383,7 +387,7 @@ func (process *TeleportProcess) rotate(conn *Connector, localState auth.StateV2,
 				return false, trace.Wrap(err)
 			}
 			// update of the servers requires reload of teleport process
-			err = writeStateAndIdentity(identity)
+			err = writeStateAndIdentity(auth.IdentityCurrent, identity)
 			if err != nil {
 				return false, trace.Wrap(err)
 			}
