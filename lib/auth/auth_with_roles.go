@@ -41,6 +41,10 @@ type AuthWithRoles struct {
 	alog       events.IAuditLog
 }
 
+func (a *AuthWithRoles) actionWithContext(ctx *services.Context, namespace string, resource string, action string) error {
+	return a.checker.CheckAccessToRule(ctx, namespace, resource, action)
+}
+
 func (a *AuthWithRoles) action(namespace string, resource string, action string) error {
 	return a.checker.CheckAccessToRule(&services.Context{User: a.user}, namespace, resource, action)
 }
@@ -139,10 +143,11 @@ func (a *AuthWithRoles) RotateCertAuthority(req RotateRequest) error {
 }
 
 func (a *AuthWithRoles) UpsertCertAuthority(ca services.CertAuthority) error {
-	if err := a.action(defaults.Namespace, services.KindCertAuthority, services.VerbCreate); err != nil {
+	ctx := &services.Context{User: a.user, Resource: ca}
+	if err := a.actionWithContext(ctx, defaults.Namespace, services.KindCertAuthority, services.VerbCreate); err != nil {
 		return trace.Wrap(err)
 	}
-	if err := a.action(defaults.Namespace, services.KindCertAuthority, services.VerbUpdate); err != nil {
+	if err := a.actionWithContext(ctx, defaults.Namespace, services.KindCertAuthority, services.VerbUpdate); err != nil {
 		return trace.Wrap(err)
 	}
 	return a.authServer.UpsertCertAuthority(ca)
@@ -170,7 +175,6 @@ func (a *AuthWithRoles) GetCertAuthorities(caType services.CertAuthType, loadKey
 			return nil, trace.Wrap(err)
 		}
 	}
-
 	return a.authServer.GetCertAuthorities(caType, loadKeys)
 }
 

@@ -38,10 +38,15 @@ type RuleContext interface {
 	GetIdentifier(fields []string) (interface{}, error)
 	// String returns human friendly representation of a context
 	String() string
+	// GetResource returns resource if specified in the context,
+	// if unpecified, returns error
+	GetResource() (Resource, error)
 }
 
 // NewWhereParser returns standard parser for `where` section in access rules
 func NewWhereParser(ctx RuleContext) (predicate.Parser, error) {
+	// get is a function that returns identifier field
+	// used in cases when there are some reserved words by go
 	return predicate.NewParser(predicate.Def{
 		Operators: predicate.Operators{
 			AND: predicate.And,
@@ -50,10 +55,36 @@ func NewWhereParser(ctx RuleContext) (predicate.Parser, error) {
 		Functions: map[string]interface{}{
 			"equals":   predicate.Equals,
 			"contains": predicate.Contains,
+			"not":      Not,
+			// catype is a function that returns cert authority type
+			// returns empty values for unrecognized values to
+			// pass static rule checks
+			"catype": func() (interface{}, error) {
+				resource, err := ctx.GetResource()
+				if err != nil {
+					if trace.IsNotFound(err) {
+						return "", nil
+					}
+					return nil, trace.Wrap(err)
+				}
+				ca, ok := resource.(CertAuthority)
+				if !ok {
+					return "", nil
+				}
+				return ca.GetType(), nil
+			},
 		},
 		GetIdentifier: ctx.GetIdentifier,
 		GetProperty:   predicate.GetStringMapValue,
 	})
+}
+
+// Not is a boolean predicate that calls a boolean predicate
+// and returns negated result
+func Not(a predicate.BoolPredicate) predicate.BoolPredicate {
+	return func() bool {
+		return !a()
+	}
 }
 
 // NewActionsParser returns standard parser for 'actions' section in access rules
@@ -123,6 +154,15 @@ const (
 	// ResourceIdentifier represents resource registered identifer in the rules
 	ResourceIdentifier = "resource"
 )
+
+// GetResource returns resource specified in the context,
+// returns error if not specified
+func (ctx *Context) GetResource() (Resource, error) {
+	if ctx.Resource == nil {
+		return nil, trace.NotFound("resource is not set in the context")
+	}
+	return ctx.Resource, nil
+}
 
 // GetIdentifier returns identifier defined in a context
 func (ctx *Context) GetIdentifier(fields []string) (interface{}, error) {

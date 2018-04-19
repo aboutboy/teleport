@@ -87,7 +87,7 @@ func (c *StatusCommand) Status(client auth.ClientI) error {
 	}
 	fmt.Printf(view())
 
-	// in debug mode, output mode of remote authorities
+	// in debug mode, output mode of remote certificate authorities
 	if c.config.Debug {
 		view := func() string {
 			table := asciitable.MakeHeadlessTable(2)
@@ -95,11 +95,11 @@ func (c *StatusCommand) Status(client auth.ClientI) error {
 				if ca.GetClusterName() == clusterName {
 					continue
 				}
-				info := fmt.Sprintf("Remote %v CA %q", strings.Title(string(ca.GetType())), clusterName)
+				info := fmt.Sprintf("Remote %v CA %q", strings.Title(string(ca.GetType())), ca.GetClusterName())
 				rotation := ca.GetRotation()
 				table.AddRow([]string{info, rotation.String()})
 			}
-			return table.AsBuffer().String()
+			return "Remote clusters\n\n" + table.AsBuffer().String()
 		}
 		fmt.Printf(view())
 	}

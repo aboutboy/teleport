@@ -165,7 +165,7 @@ func Run(options Options) (executedCommand string, conf *service.Config) {
 
 // OnStart is the handler for "start" CLI command
 func OnStart(config *service.Config) error {
-	return service.Run(context.TODO(), *config)
+	return service.Run(context.TODO(), *config, nil)
 }
 
 // onStatus is the handler for "status" CLI command

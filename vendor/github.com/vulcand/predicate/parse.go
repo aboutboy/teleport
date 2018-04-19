@@ -122,6 +122,20 @@ func (p *predicateParser) evaluateExpr(n ast.Expr) (interface{}, error) {
 			return nil, trace.Wrap(err)
 		}
 		return val, nil
+	case *ast.CallExpr:
+		name, err := getIdentifier(l.Fun)
+		if err != nil {
+			return nil, err
+		}
+		fn, err := p.getFunction(name)
+		if err != nil {
+			return nil, err
+		}
+		arguments, err := p.evaluateArguments(l.Args)
+		if err != nil {
+			return nil, err
+		}
+		return callFunction(fn, arguments)
 	default:
 		return nil, trace.BadParameter("%T is not supported", n)
 	}

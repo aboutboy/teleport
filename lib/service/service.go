@@ -309,11 +309,38 @@ func (process *TeleportProcess) GetIdentity(role teleport.Role) (i *auth.Identit
 	return i, nil
 }
 
+// Process is a interface for processes
+type Process interface {
+	// Closer closes all resources used by the process
+	io.Closer
+	// Start starts the process in a non-blocking way
+	Start() error
+	// WaitForSignals waits until the process recievies a signal
+	// and exits
+	WaitForSignals(context.Context) error
+	// ExportFileDescriptors exports service listeners
+	// file descriptors used by the process.
+	ExportFileDescriptors() ([]FileDescriptor, error)
+	// Shutdown starts graceful shutdown of the process,
+	// blocks until all resources are associated
+	Shutdown(context.Context)
+}
+
+// NewProcess is a function that creates new teleport from config
+type NewProcess func(cfg *Config) (Process, error)
+
+func newTeleportProcess(cfg *Config) (Process, error) {
+	return NewTeleport(cfg)
+}
+
 // Run starts teleport processes, waits for signals
 // and handles internal process signals.
-func Run(ctx context.Context, cfg Config) error {
+func Run(ctx context.Context, cfg Config, newTeleport NewProcess) error {
+	if newTeleport == nil {
+		newTeleport = newTeleportProcess
+	}
 	copyCfg := cfg
-	srv, err := NewTeleport(&copyCfg)
+	srv, err := newTeleport(&copyCfg)
 	if err != nil {
 		return trace.Wrap(err, "Initialization failed")
 	}
@@ -332,7 +359,7 @@ wait:
 	}
 	newCfg := cfg
 	newCfg.FileDescriptors = fileDescriptors
-	newSrv, err := NewTeleport(&newCfg)
+	newSrv, err := newTeleport(&newCfg)
 	if err != nil {
 		warnOnErr(srv.Close())
 		return trace.Wrap(err, "Reload failed")
@@ -343,8 +370,8 @@ wait:
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, defaults.DefaultIdleConnectionDuration*2)
 	defer cancel()
-	// wait until services are declared as started, before shutting down
-	// this one?
+	// TODO(klizhentas) wait until services are declared as started, before shutting down
+	// this one, otherwise some requests may fail
 	srv.Shutdown(timeoutCtx)
 	if timeoutCtx.Err() == context.DeadlineExceeded {
 		warnOnErr(srv.Close())
