@@ -28,6 +28,7 @@ import (
 	"github.com/jonboulle/clockwork"
 	log "github.com/sirupsen/logrus"
 	"github.com/vulcand/predicate"
+	"github.com/vulcand/predicate/builder"
 )
 
 // RuleContext specifies context passed to the
@@ -43,6 +44,14 @@ type RuleContext interface {
 	GetResource() (Resource, error)
 }
 
+var (
+	// ResourceNameExpr is identifer that specifies resource name
+	ResourceNameExpr = builder.Identifier("resource.metadata.name")
+	// CertAuthorityTypeExpr is a function call that returns
+	// cert authority type
+	CertAuthorityTypeExpr = builder.Identifier(`system.catype()`)
+)
+
 // NewWhereParser returns standard parser for `where` section in access rules
 func NewWhereParser(ctx RuleContext) (predicate.Parser, error) {
 	// get is a function that returns identifier field
@@ -51,15 +60,15 @@ func NewWhereParser(ctx RuleContext) (predicate.Parser, error) {
 		Operators: predicate.Operators{
 			AND: predicate.And,
 			OR:  predicate.Or,
+			NOT: predicate.Not,
 		},
 		Functions: map[string]interface{}{
 			"equals":   predicate.Equals,
 			"contains": predicate.Contains,
-			"not":      Not,
-			// catype is a function that returns cert authority type
+			// system.catype is a function that returns cert authority type
 			// returns empty values for unrecognized values to
 			// pass static rule checks
-			"catype": func() (interface{}, error) {
+			"system.catype": func() (interface{}, error) {
 				resource, err := ctx.GetResource()
 				if err != nil {
 					if trace.IsNotFound(err) {
@@ -71,20 +80,12 @@ func NewWhereParser(ctx RuleContext) (predicate.Parser, error) {
 				if !ok {
 					return "", nil
 				}
-				return ca.GetType(), nil
+				return string(ca.GetType()), nil
 			},
 		},
 		GetIdentifier: ctx.GetIdentifier,
 		GetProperty:   predicate.GetStringMapValue,
 	})
-}
-
-// Not is a boolean predicate that calls a boolean predicate
-// and returns negated result
-func Not(a predicate.BoolPredicate) predicate.BoolPredicate {
-	return func() bool {
-		return !a()
-	}
 }
 
 // NewActionsParser returns standard parser for 'actions' section in access rules

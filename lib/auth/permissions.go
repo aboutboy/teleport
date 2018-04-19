@@ -24,6 +24,7 @@ import (
 	"github.com/gravitational/teleport/lib/services"
 
 	"github.com/gravitational/trace"
+	"github.com/vulcand/predicate/builder"
 )
 
 // NewAdminContext returns new admin auth context
@@ -188,7 +189,7 @@ func (a *authorizer) authorizeRemoteBuiltinRole(r RemoteBuiltinRole) (*AuthConte
 						Verbs:     []string{services.VerbCreate, services.VerbRead, services.VerbUpdate},
 						// allow administrative access to the certificate authority names
 						// matching the cluster name only
-						Where: services.EqualsE(services.ResourceNameExpr, services.StringExpr(r.ClusterName)).String(),
+						Where: builder.Equals(services.ResourceNameExpr, builder.String(r.ClusterName)).String(),
 					},
 				},
 			},
@@ -284,14 +285,14 @@ func GetCheckerForBuiltinRole(clusterName string, clusterConfig services.Cluster
 							{
 								Resources: []string{services.KindCertAuthority},
 								Verbs:     []string{services.VerbCreate, services.VerbRead, services.VerbUpdate},
-								// allow administrative access to the certificate authority names
+								// allow administrative access to the host certificate authorities
 								// matching any cluster name except local
-								Where: services.AndE(
-									services.EqualsE(services.IdentifierExpr(`catype()`), services.StringExpr(services.HostCA)),
-									services.NotE(
-										services.EqualsE(
+								Where: builder.And(
+									builder.Equals(services.CertAuthorityTypeExpr, builder.String(string(services.HostCA))),
+									builder.Not(
+										builder.Equals(
 											services.ResourceNameExpr,
-											services.StringExpr(clusterName),
+											builder.String(clusterName),
 										),
 									),
 								).String(),
@@ -336,12 +337,12 @@ func GetCheckerForBuiltinRole(clusterName string, clusterConfig services.Cluster
 							Verbs:     []string{services.VerbCreate, services.VerbRead, services.VerbUpdate},
 							// allow administrative access to the certificate authority names
 							// matching any cluster name except local
-							Where: services.AndE(
-								services.EqualsE(services.IdentifierExpr(`catype()`), services.StringExpr(services.HostCA)),
-								services.NotE(
-									services.EqualsE(
+							Where: builder.And(
+								builder.Equals(services.CertAuthorityTypeExpr, builder.String(string(services.HostCA))),
+								builder.Not(
+									builder.Equals(
 										services.ResourceNameExpr,
-										services.StringExpr(clusterName),
+										builder.String(clusterName),
 									),
 								),
 							).String(),
