@@ -316,6 +316,22 @@ func (c *Client) RotateCertAuthority(req RotateRequest) error {
 	return trace.Wrap(err)
 }
 
+// RotateExternalCertAuthority rotates external certificate authority,
+// this method is called by remote trusted cluster and is used to update
+// only public keys and certificates of the certificate authority.
+func (c *Client) RotateExternalCertAuthority(ca services.CertAuthority) error {
+	if err := ca.Check(); err != nil {
+		return trace.Wrap(err)
+	}
+	data, err := services.GetCertAuthorityMarshaler().MarshalCertAuthority(ca)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	_, err = c.PostJSON(c.Endpoint("authorities", string(ca.GetType()), "rotate", "external"),
+		&rotateExternalCertAuthorityRawReq{CA: data})
+	return trace.Wrap(err)
+}
+
 // UpsertCertAuthority updates or inserts new cert authority
 func (c *Client) UpsertCertAuthority(ca services.CertAuthority) error {
 	if err := ca.Check(); err != nil {
@@ -2265,6 +2281,11 @@ type ClientI interface {
 
 	// RotateCertAuthority starts or restarts certificate authority rotation procedure
 	RotateCertAuthority(req RotateRequest) error
+
+	// RotateExternalCertAuthority rotates external certificate authority,
+	// this method is called by remote trusted cluster and is used to update
+	// only public keys and certificates of the certificate authority.
+	RotateExternalCertAuthority(ca services.CertAuthority) error
 
 	// ValidateTrustedCluster validates trusted cluster token with
 	// main cluster, in case if validation is successfull, main cluster

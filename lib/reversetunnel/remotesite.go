@@ -310,31 +310,35 @@ func (s *remoteSite) periodicSendDiscoveryRequests() {
 // updateCertAuthorities updates local and remote cert authorities
 func (s *remoteSite) updateCertAuthorities() error {
 	// update main cluster cert authorities on the remote side
-	localCA, err := s.localClient.GetCertAuthority(services.CertAuthID{
+	// remote side makes sure that only relevant fields
+	// are updated
+	hostCA, err := s.localClient.GetCertAuthority(services.CertAuthID{
 		Type:       services.HostCA,
 		DomainName: s.srv.ClusterName,
 	}, false)
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	err = s.remoteClient.UpsertCertAuthority(localCA)
+	err = s.remoteClient.RotateExternalCertAuthority(hostCA)
 	if err != nil {
 		return trace.Wrap(err)
 	}
 
-	localCA, err = s.localClient.GetCertAuthority(services.CertAuthID{
+	userCA, err := s.localClient.GetCertAuthority(services.CertAuthID{
 		Type:       services.UserCA,
 		DomainName: s.srv.ClusterName,
 	}, false)
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	err = s.remoteClient.UpsertCertAuthority(localCA)
+	err = s.remoteClient.RotateExternalCertAuthority(userCA)
 	if err != nil {
 		return trace.Wrap(err)
 	}
 
-	// update remote cluster cert authorities on a local cluster
+	// update remote cluster's host cert authoritiy on a local cluster
+	// local proxy is authorized to perform this operation only for
+	// host authorities of remote clusters.
 	remoteCA, err := s.remoteClient.GetCertAuthority(services.CertAuthID{
 		Type:       services.HostCA,
 		DomainName: s.domainName,
@@ -366,7 +370,11 @@ func (s *remoteSite) periodicUpdateCertAuthorities() {
 		case <-ticker.C:
 			err := s.updateCertAuthorities()
 			if err != nil {
-				s.Warningf("Could not perform cert authorities updated: %v.", trace.DebugReport(err))
+				if trace.IsNotFound(err) {
+					s.Debugf("Remote cluster %v does not support cert authorities rotation yet.", s.domainName)
+				} else {
+					s.Warningf("Could not perform cert authorities updated: %v.", trace.DebugReport(err))
+				}
 			} else {
 				s.Debugf("Certificate authorities updated.")
 			}

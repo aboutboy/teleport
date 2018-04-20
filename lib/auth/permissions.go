@@ -186,7 +186,9 @@ func (a *authorizer) authorizeRemoteBuiltinRole(r RemoteBuiltinRole) (*AuthConte
 					// during certificates renewal
 					{
 						Resources: []string{services.KindCertAuthority},
-						Verbs:     []string{services.VerbCreate, services.VerbRead, services.VerbUpdate},
+						// It is important that remote proxy can only rotate
+						// existing certificate authority, and not create or update new ones
+						Verbs: []string{services.VerbRead, services.VerbRotate},
 						// allow administrative access to the certificate authority names
 						// matching the cluster name only
 						Where: builder.Equals(services.ResourceNameExpr, builder.String(r.ClusterName)).String(),

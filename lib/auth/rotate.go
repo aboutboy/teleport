@@ -122,6 +122,41 @@ func (a *AuthServer) RotateCertAuthority(req RotateRequest) error {
 	return nil
 }
 
+// RotateExternalCertAuthority rotates external certificate authority,
+// this method is called by remote trusted cluster and is used to update
+// only public keys and certificates of the certificate authority.
+func (a *AuthServer) RotateExternalCertAuthority(ca services.CertAuthority) error {
+	if ca == nil {
+		return trace.BadParameter("missing certificate authority")
+	}
+	// this is just an extra precaution against local admins,
+	// because this is additionally enforced by RBAC as well
+	if ca.GetClusterName() == a.clusterName.GetClusterName() {
+		return trace.BadParameter("can not rotate local certificate authority")
+	}
+
+	existing, err := a.GetCertAuthority(services.CertAuthID{
+		Type:       ca.GetType(),
+		DomainName: ca.GetClusterName(),
+	}, false)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	updated := existing.Clone()
+	updated.SetCheckingKeys(ca.GetCheckingKeys())
+	updated.SetTLSKeyPairs(ca.GetTLSKeyPairs())
+	updated.SetRotation(ca.GetRotation())
+
+	// use compare and swap to protect from concurrent updates
+	// by trusted cluster API
+	if err := a.CompareAndSwapCertAuthority(updated, existing); err != nil {
+		return trace.Wrap(err)
+	}
+
+	return nil
+}
+
 // completeRotation attempts to complete rotation, is safe to execute concurrently,
 // as it is uses compare and swap operations.
 func (a *AuthServer) completeRotation() error {

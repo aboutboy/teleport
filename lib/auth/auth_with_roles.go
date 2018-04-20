@@ -142,7 +142,24 @@ func (a *AuthWithRoles) RotateCertAuthority(req RotateRequest) error {
 	return a.authServer.RotateCertAuthority(req)
 }
 
+// RotateExternalCertAuthority rotates external certificate authority,
+// this method is called by remote trusted cluster and is used to update
+// only public keys and certificates of the certificate authority.
+func (a *AuthWithRoles) RotateExternalCertAuthority(ca services.CertAuthority) error {
+	if ca == nil {
+		return trace.BadParameter("missing certificate authority")
+	}
+	ctx := &services.Context{User: a.user, Resource: ca}
+	if err := a.actionWithContext(ctx, defaults.Namespace, services.KindCertAuthority, services.VerbRotate); err != nil {
+		return trace.Wrap(err)
+	}
+	return a.authServer.RotateExternalCertAuthority(ca)
+}
+
 func (a *AuthWithRoles) UpsertCertAuthority(ca services.CertAuthority) error {
+	if ca == nil {
+		return trace.BadParameter("missing certificate authority")
+	}
 	ctx := &services.Context{User: a.user, Resource: ca}
 	if err := a.actionWithContext(ctx, defaults.Namespace, services.KindCertAuthority, services.VerbCreate); err != nil {
 		return trace.Wrap(err)

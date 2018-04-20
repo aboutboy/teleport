@@ -188,6 +188,10 @@ const (
 
 	// VerbDelete is used to remove an object.
 	VerbDelete = "delete"
+
+	// VerbRotate is used to rotate certificate authorities
+	// used only internally
+	VerbRotate = "rotate"
 )
 
 func collectOptions(opts []MarshalOption) (*MarshalConfig, error) {

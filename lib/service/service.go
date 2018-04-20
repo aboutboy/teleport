@@ -301,10 +301,6 @@ func (process *TeleportProcess) GetIdentity(role teleport.Role) (i *auth.Identit
 			}
 		}
 	}
-	// this information may not be allways present in the certificates,
-	// so augment it here
-	i.ID.HostUUID = process.Config.HostUUID
-	i.ID.NodeName = process.Config.Hostname
 	process.Identities[role] = i
 	return i, nil
 }
@@ -1215,14 +1211,18 @@ func (process *TeleportProcess) initDiagnosticService() error {
 
 // getAdditionalPrincipals returns a list of additional principals set up for role
 func (process *TeleportProcess) getAdditionalPrincipals(role teleport.Role) ([]string, error) {
+	var principals []string
+	if process.Config.Hostname != "" {
+		principals = append(principals, process.Config.Hostname)
+	}
 	if process.Config.Proxy.PublicAddr.Addr != "" {
 		host, err := utils.Host(process.Config.Proxy.PublicAddr.Addr)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
-		return []string{host}, nil
+		principals = append(principals, host)
 	}
-	return nil, nil
+	return principals, nil
 }
 
 // initProxy gets called if teleport runs with 'proxy' role enabled.

@@ -67,6 +67,7 @@ func NewAPIServer(config *APIConfig) http.Handler {
 
 	srv.POST("/:version/authorities/:type", srv.withAuth(srv.upsertCertAuthority))
 	srv.POST("/:version/authorities/:type/rotate", srv.withAuth(srv.rotateCertAuthority))
+	srv.POST("/:version/authorities/:type/rotate/external", srv.withAuth(srv.rotateExternalCertAuthority))
 	srv.DELETE("/:version/authorities/:type/:domain", srv.withAuth(srv.deleteCertAuthority))
 	srv.GET("/:version/authorities/:type/:domain", srv.withAuth(srv.getCertAuthority))
 	srv.GET("/:version/authorities/:type", srv.withAuth(srv.getCertAuthorities))
@@ -952,6 +953,25 @@ func (s *APIServer) upsertCertAuthority(auth ClientI, w http.ResponseWriter, r *
 		ca.SetTTL(s, req.TTL)
 	}
 	if err := auth.UpsertCertAuthority(ca); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return message("ok"), nil
+}
+
+type rotateExternalCertAuthorityRawReq struct {
+	CA json.RawMessage `json:"ca"`
+}
+
+func (s *APIServer) rotateExternalCertAuthority(auth ClientI, w http.ResponseWriter, r *http.Request, p httprouter.Params, version string) (interface{}, error) {
+	var req rotateExternalCertAuthorityRawReq
+	if err := httplib.ReadJSON(r, &req); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	ca, err := services.GetCertAuthorityMarshaler().UnmarshalCertAuthority(req.CA)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	if err := auth.RotateExternalCertAuthority(ca); err != nil {
 		return nil, trace.Wrap(err)
 	}
 	return message("ok"), nil
